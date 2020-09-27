@@ -2,8 +2,10 @@
 // vim: set sw=4 sts=4:
 package main
 
-import(
+import (
     "fmt"
+
+    "fwdmng/config"
     "github.com/gdamore/tcell"
     "github.com/rivo/tview"
 )
@@ -135,6 +137,13 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 
 func main() {
     fmt.Println("start")
+    cfg, err := config.Load("fwdconfig.toml")
+    if err != nil {
+	fmt.Println(err)
+	return
+    }
+    fmt.Println(*cfg)
+
     app := tview.NewApplication()
 
     triblectrlc := 0
@@ -196,4 +205,6 @@ func main() {
     if err := app.Run(); err != nil {
 	panic(err)
     }
+
+    config.Save(cfg, "fwdconfig.toml")
 }
