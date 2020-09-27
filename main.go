@@ -54,6 +54,7 @@ type ServiceList struct {
     *tview.Box
     cfg *config.Config
     // ui
+    pages *tview.Pages
     items []ListItem
     cursor int
     quit func()
@@ -73,6 +74,19 @@ func (s *ServiceList)UpdateItems() {
 	    s.items = append(s.items, &sshfwd{ Fwd: f })
 	}
     }
+}
+
+func (s *ServiceList)Quit() {
+    modal := tview.NewModal().
+	SetText("Quit?").
+	AddButtons([]string{"Quit", "Cancel"}).
+	SetDoneFunc(func(idx int, lbl string) {
+	    if lbl == "Quit" {
+		s.quit()
+	    }
+	    s.pages.RemovePage("quit")
+	})
+    s.pages.AddAndSwitchToPage("quit", modal, true)
 }
 
 func (s *ServiceList)Draw(screen tcell.Screen) {
@@ -136,7 +150,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	case 'e': edit()
 	case 'd': del()
 	case 'n':
-	case 'q': s.quit()
+	case 'q': s.Quit()
 	}
     })
 }
@@ -171,18 +185,8 @@ func main() {
     pages := tview.NewPages()
     pages.AddPage("main", list, true, true)
 
-    list.quit = func() {
-	modal := tview.NewModal().
-	    SetText("Quit?").
-	    AddButtons([]string{"Quit", "Cancel"}).
-	    SetDoneFunc(func(idx int, lbl string) {
-		if lbl == "Quit" {
-		    app.Stop()
-		}
-		pages.RemovePage("quit")
-	    })
-	pages.AddAndSwitchToPage("quit", modal, true)
-    }
+    list.pages = pages
+    list.quit = app.Stop
 
     app.SetRoot(pages, true)
     if err := app.Run(); err != nil {
