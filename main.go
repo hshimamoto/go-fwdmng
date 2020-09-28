@@ -89,6 +89,48 @@ func (s *ServiceList)Quit() {
     s.pages.AddAndSwitchToPage("quit", modal, true)
 }
 
+func (s *ServiceList)EditSSHHost(host *sshhost) {
+    form := tview.NewForm()
+    form.AddInputField("Name", host.Name, 16, nil, nil)
+    form.AddInputField("Hostname", host.Hostname, 32, nil, nil)
+    namef := form.GetFormItemByLabel("Name")
+    name, _ := namef.(*tview.InputField)
+    hostnamef := form.GetFormItemByLabel("Hostname")
+    hostname, _ := hostnamef.(*tview.InputField)
+    form.AddButton("Done", func() {
+	host.Name = name.GetText()
+	host.Hostname = hostname.GetText()
+	s.pages.RemovePage("edit")
+    })
+    form.AddButton("Cancel", func() {
+	s.pages.RemovePage("edit")
+    })
+    s.pages.AddAndSwitchToPage("edit", form, true)
+}
+
+func (s *ServiceList)EditSSHFwd(fwd *sshfwd) {
+    form := tview.NewForm()
+    form.AddInputField("Proto", fwd.Name, 16, nil, nil)
+    form.AddInputField("Local", fwd.Local, 32, nil, nil)
+    form.AddInputField("Remote", fwd.Remote, 32, nil, nil)
+    namef := form.GetFormItemByLabel("Proto")
+    name, _ := namef.(*tview.InputField)
+    localf := form.GetFormItemByLabel("Local")
+    local, _ := localf.(*tview.InputField)
+    remotef := form.GetFormItemByLabel("Remote")
+    remote, _ := remotef.(*tview.InputField)
+    form.AddButton("Done", func() {
+	fwd.Name = name.GetText()
+	fwd.Local = local.GetText()
+	fwd.Remote = remote.GetText()
+	s.pages.RemovePage("edit")
+    })
+    form.AddButton("Cancel", func() {
+	s.pages.RemovePage("edit")
+    })
+    s.pages.AddAndSwitchToPage("edit", form, true)
+}
+
 func (s *ServiceList)Draw(screen tcell.Screen) {
     s.UpdateItems()
     s.Box.Draw(screen)
@@ -133,6 +175,11 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    }
 	}
 	edit := func() {
+	    item := s.items[s.cursor]
+	    switch item := item.(type) {
+	    case *sshhost: s.EditSSHHost(item)
+	    case *sshfwd: s.EditSSHFwd(item)
+	    }
 	}
 	del := func() {
 	}
