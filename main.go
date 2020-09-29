@@ -75,6 +75,19 @@ func (s *ServiceList)UpdateItems() {
     }
 }
 
+func (s *ServiceList)Confirm(ask string, f func()) {
+    modal := tview.NewModal().
+	SetText(ask).
+	AddButtons([]string{"No", "Yes"}).
+	SetDoneFunc(func(idx int, lbl string) {
+	    if lbl == "Yes" {
+		f()
+	    }
+	    s.app.pages.RemovePage("confirm")
+	})
+    s.app.pages.AddAndSwitchToPage("confirm", modal, true)
+}
+
 func (s *ServiceList)Quit() {
     modal := tview.NewModal().
 	SetText("Quit?").
@@ -200,6 +213,56 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    s.cfg.SSHHosts = append(s.cfg.SSHHosts, host)
 	}
 	del := func() {
+	    // what is the target item
+	    name := ""
+	    target := s.cursor
+	    item := s.items[target]
+	    var targethost *config.SSHHost = nil
+	    var targetfwd *config.Fwd = nil
+	    if host, ok := item.(*sshhost); ok {
+		name = host.Name
+		targethost = host.SSHHost
+	    }
+	    if fwd, ok := item.(*sshfwd); ok {
+		host := s.items[0].(*sshhost)
+		i := 0
+		for i = target - 1; i >= 0; i-- {
+		    if tmp, ok := s.items[i].(*sshhost); ok {
+			host = tmp
+			break
+		    }
+		}
+		targethost = host.SSHHost
+		if len(host.Fwds) > 1 {
+		    name = fmt.Sprintf("%s:%s", host.Name, fwd.Name)
+		    targetfwd = fwd.Fwd
+		} else {
+		    target = i
+		    name = host.Name
+		}
+	    }
+	    // confirm
+	    s.Confirm(fmt.Sprintf("Delete %s ?", name), func() {
+		if targetfwd != nil {
+		    // remove one Fwd
+		    fwds := []config.Fwd{}
+		    for i, _ := range targethost.Fwds {
+			if targetfwd != &targethost.Fwds[i] {
+			    fwds = append(fwds, targethost.Fwds[i])
+			}
+		    }
+		    targethost.Fwds = fwds
+		} else {
+		    // remove SSHHost
+		    hosts := []config.SSHHost{}
+		    for i, _ := range s.cfg.SSHHosts {
+			if targethost != &s.cfg.SSHHosts[i] {
+			    hosts = append(hosts, s.cfg.SSHHosts[i])
+			}
+		    }
+		    s.cfg.SSHHosts = hosts
+		}
+	    })
 	}
 	switch event.Key() {
 	case tcell.KeyUp: up()
