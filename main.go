@@ -54,10 +54,9 @@ type ServiceList struct {
     *tview.Box
     cfg *config.Config
     // ui
-    pages *tview.Pages
+    app *Application
     items []ListItem
     cursor int
-    quit func()
 }
 
 func NewServiceList() *ServiceList {
@@ -82,11 +81,11 @@ func (s *ServiceList)Quit() {
 	AddButtons([]string{"Quit", "Cancel"}).
 	SetDoneFunc(func(idx int, lbl string) {
 	    if lbl == "Quit" {
-		s.quit()
+		s.app.Stop()
 	    }
-	    s.pages.RemovePage("quit")
+	    s.app.pages.RemovePage("quit")
 	})
-    s.pages.AddAndSwitchToPage("quit", modal, true)
+    s.app.pages.AddAndSwitchToPage("quit", modal, true)
 }
 
 func (s *ServiceList)EditSSHHost(host *sshhost) {
@@ -100,12 +99,12 @@ func (s *ServiceList)EditSSHHost(host *sshhost) {
     form.AddButton("Done", func() {
 	host.Name = name.GetText()
 	host.Hostname = hostname.GetText()
-	s.pages.RemovePage("edit")
+	s.app.pages.RemovePage("edit")
     })
     form.AddButton("Cancel", func() {
-	s.pages.RemovePage("edit")
+	s.app.pages.RemovePage("edit")
     })
-    s.pages.AddAndSwitchToPage("edit", form, true)
+    s.app.pages.AddAndSwitchToPage("edit", form, true)
 }
 
 func (s *ServiceList)EditSSHFwd(fwd *sshfwd) {
@@ -123,12 +122,12 @@ func (s *ServiceList)EditSSHFwd(fwd *sshfwd) {
 	fwd.Name = name.GetText()
 	fwd.Local = local.GetText()
 	fwd.Remote = remote.GetText()
-	s.pages.RemovePage("edit")
+	s.app.pages.RemovePage("edit")
     })
     form.AddButton("Cancel", func() {
-	s.pages.RemovePage("edit")
+	s.app.pages.RemovePage("edit")
     })
-    s.pages.AddAndSwitchToPage("edit", form, true)
+    s.app.pages.AddAndSwitchToPage("edit", form, true)
 }
 
 func (s *ServiceList)Draw(screen tcell.Screen) {
@@ -202,6 +201,40 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
     })
 }
 
+type Application struct {
+    *tview.Application
+    pages *tview.Pages
+}
+
+func NewApplication(cfg *config.Config) *Application {
+    app := &Application{
+	Application: tview.NewApplication(),
+	pages: tview.NewPages(),
+    }
+    list := NewServiceList()
+    list.cfg = cfg
+    app.pages.AddPage("main", list, true, true)
+    list.app = app
+    app.SetRoot(app.pages, true)
+    return app
+}
+
+func (a *Application)Run() error {
+    triple_ctrl_c := 0
+    a.Application.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyCtrlC {
+	    triple_ctrl_c++
+	    if triple_ctrl_c >= 3 {
+		return event
+	    }
+	    return nil
+	}
+	triple_ctrl_c = 0
+	return event
+    })
+    return a.Application.Run()
+}
+
 func main() {
     fmt.Println("start")
     cfg, err := config.Load("fwdconfig.toml")
@@ -209,33 +242,8 @@ func main() {
 	fmt.Println(err)
 	return
     }
-    fmt.Println(*cfg)
 
-    app := tview.NewApplication()
-
-    triblectrlc := 0
-    app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() == tcell.KeyCtrlC {
-	    triblectrlc++
-	    if triblectrlc >= 3 {
-		return event
-	    }
-	    return nil
-	}
-	triblectrlc = 0
-	return event
-    })
-
-    list := NewServiceList()
-    list.cfg = cfg
-
-    pages := tview.NewPages()
-    pages.AddPage("main", list, true, true)
-
-    list.pages = pages
-    list.quit = app.Stop
-
-    app.SetRoot(pages, true)
+    app := NewApplication(cfg)
     if err := app.Run(); err != nil {
 	panic(err)
     }
