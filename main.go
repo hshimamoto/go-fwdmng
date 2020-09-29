@@ -92,13 +92,17 @@ func (s *ServiceList)EditSSHHost(host *sshhost) {
     form := tview.NewForm()
     form.AddInputField("Name", host.Name, 16, nil, nil)
     form.AddInputField("Hostname", host.Hostname, 32, nil, nil)
+    form.AddInputField("Privkey", host.Privkey, 32, nil, nil)
     namef := form.GetFormItemByLabel("Name")
     name, _ := namef.(*tview.InputField)
     hostnamef := form.GetFormItemByLabel("Hostname")
     hostname, _ := hostnamef.(*tview.InputField)
+    privkeyf := form.GetFormItemByLabel("Privkey")
+    privkey, _ := privkeyf.(*tview.InputField)
     form.AddButton("Done", func() {
 	host.Name = name.GetText()
 	host.Hostname = hostname.GetText()
+	host.Privkey = privkey.GetText()
 	s.app.pages.RemovePage("edit")
     })
     form.AddButton("Cancel", func() {
@@ -153,7 +157,7 @@ func (s *ServiceList)Draw(screen tcell.Screen) {
     help := "<Up/Down> Select "
     help += "| <Enter> [::u]E[::-]dit "
     help += "| <Del> [::u]D[::-]elete "
-    help += "| [::u]N[::-]ew "
+    help += "| [::u]N[::-]ewhost "
     help += "| [::u]Q[::-]uit"
     tview.Print(screen, help, x, h, w, tview.AlignLeft, tcell.ColorWhite)
 }
@@ -180,6 +184,21 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    case *sshfwd: s.EditSSHFwd(item)
 	    }
 	}
+	newhost := func() {
+	    host := config.SSHHost{
+		Name: "new name",
+		Hostname: "new hostname",
+		Privkey: "new privkey",
+		Fwds: []config.Fwd{
+		    config.Fwd{
+			Name: "unknown",
+			Local: ":0",
+			Remote: "127.0.0.1:0",
+		    },
+		},
+	    }
+	    s.cfg.SSHHosts = append(s.cfg.SSHHosts, host)
+	}
 	del := func() {
 	}
 	switch event.Key() {
@@ -194,8 +213,8 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	case 'k': up()
 	case 'j': down()
 	case 'e': edit()
+	case 'n': newhost()
 	case 'd': del()
-	case 'n':
 	case 'q': s.Quit()
 	}
     })
