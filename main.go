@@ -170,7 +170,8 @@ func (s *ServiceList)Draw(screen tcell.Screen) {
     help := "<Up/Down> Select "
     help += "| <Enter> [::u]E[::-]dit "
     help += "| <Del> [::u]D[::-]elete "
-    help += "| [::u]N[::-]ewhost "
+    help += "| [::u]N[::-]ew host "
+    help += "| [::u]A[::-]dd fwd "
     help += "| [::u]Q[::-]uit"
     tview.Print(screen, help, x, h, w, tview.AlignLeft, tcell.ColorWhite)
 }
@@ -211,6 +212,29 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		},
 	    }
 	    s.cfg.SSHHosts = append(s.cfg.SSHHosts, host)
+	}
+	addfwd := func() {
+	    item := s.items[s.cursor]
+	    if host, ok := item.(*sshhost); ok {
+		host.SSHHost.Fwds = append(host.SSHHost.Fwds, config.Fwd{
+		    Name: "unknown",
+		    Local: ":0",
+		    Remote: "127.0.0.1:0",
+		})
+	    }
+	    if _, ok := item.(*sshfwd); ok {
+		i := 0
+		for i = s.cursor - 1; i >= 0; i-- {
+		    if host, ok := s.items[i].(*sshhost); ok {
+			host.SSHHost.Fwds = append(host.SSHHost.Fwds, config.Fwd{
+			    Name: "unknown",
+			    Local: ":0",
+			    Remote: "127.0.0.1:0",
+			})
+			break
+		    }
+		}
+	    }
 	}
 	del := func() {
 	    // what is the target item
@@ -277,6 +301,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	case 'j': down()
 	case 'e': edit()
 	case 'n': newhost()
+	case 'a': addfwd()
 	case 'd': del()
 	case 'q': s.Quit()
 	}
