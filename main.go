@@ -31,6 +31,11 @@ func (l *sshhost)Print(screen tcell.Screen, y int, selected bool) {
     if selected { color = tcell.ColorLime }
     tview.Print(screen, l.Name, 1, y, 16, tview.AlignLeft, color)
     tview.Print(screen, l.Hostname, 17, y, 16, tview.AlignLeft, color)
+    if l.connected {
+	tview.Print(screen, "connected", 33, y, 16, tview.AlignLeft, color)
+    } else {
+	tview.Print(screen, "not connected", 33, y, 16, tview.AlignLeft, color)
+    }
 }
 
 type sshfwd struct {
@@ -175,14 +180,15 @@ func (s *ServiceList)Draw(screen tcell.Screen) {
     }
 
     // show footer help
-    help := "<Up/Down> Select "
-    help += "| <Enter> [::u]E[::-]dit "
-    help += "| <Del> [::u]D[::-]elete "
-    help += "| [::u]N[::-]ew host "
-    help += "| [::u]A[::-]dd fwd "
-    help += "| [::u]S[::-]tart/Stop "
-    help += "| [::u]Q[::-]uit"
-    tview.Print(screen, help, x, h, w, tview.AlignLeft, tcell.ColorWhite)
+    help1 := "<Up/Down> Select "
+    help1 += "| <Enter> [::u]E[::-]dit "
+    help1 += "| <Del> [::u]D[::-]elete "
+    help1 += "| [::u]N[::-]ew host "
+    help1 += "| [::u]A[::-]dd fwd "
+    help1 += "| [::u]Q[::-]uit"
+    help2 := "[::u]S[::-]tart/Stop "
+    tview.Print(screen, help1, x, h-1, w, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, help2, x, h, w, tview.AlignLeft, tcell.ColorWhite)
 }
 
 func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
