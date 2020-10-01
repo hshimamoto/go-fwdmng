@@ -313,14 +313,19 @@ type Application struct {
     *tview.Application
     pages *tview.Pages
     s *ServiceList
-    cfg *config.Config
+    cfgpath string
 }
 
-func NewApplication(cfg *config.Config) *Application {
+func NewApplication(cfgpath string) *Application {
     app := &Application{
 	Application: tview.NewApplication(),
 	pages: tview.NewPages(),
-	cfg: cfg,
+	cfgpath: cfgpath,
+    }
+    cfg, err := config.Load(cfgpath)
+    if err != nil {
+	fmt.Println(err)
+	return nil
     }
     list := NewServiceList(cfg)
     app.pages.AddPage("main", list, true, true)
@@ -348,25 +353,20 @@ func (a *Application)Run() error {
 
 func (a *Application)Stop() {
     // for save sshhosts
-    a.cfg.SSHHosts = []config.SSHHost{}
+    cfg := &config.Config{}
+    cfg.SSHHosts = []config.SSHHost{}
     for _, host := range a.s.hosts {
-	a.cfg.SSHHosts = append(a.cfg.SSHHosts, *host.SSHHost)
+	cfg.SSHHosts = append(cfg.SSHHosts, *host.SSHHost)
     }
+    config.Save(cfg, a.cfgpath)
     a.Application.Stop()
 }
 
 func main() {
     fmt.Println("start")
-    cfg, err := config.Load("fwdconfig.toml")
-    if err != nil {
-	fmt.Println(err)
-	return
-    }
 
-    app := NewApplication(cfg)
+    app := NewApplication("fwdconfig.toml")
     if err := app.Run(); err != nil {
 	panic(err)
     }
-
-    config.Save(cfg, "fwdconfig.toml")
 }
