@@ -18,7 +18,9 @@ type Fwd struct {
 type SSHHost struct {
     Name string
     Hostname string
+    User string
     Privkey string
+    Proxy string
     Fwds []Fwd
 }
 

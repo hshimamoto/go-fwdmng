@@ -118,17 +118,25 @@ func (s *ServiceList)EditSSHHost(host *sshhost) {
     form := tview.NewForm()
     form.AddInputField("Name", host.Name, 16, nil, nil)
     form.AddInputField("Hostname", host.Hostname, 32, nil, nil)
+    form.AddInputField("User", host.User, 32, nil, nil)
     form.AddInputField("Privkey", host.Privkey, 32, nil, nil)
+    form.AddInputField("Proxy", host.Proxy, 32, nil, nil)
     namef := form.GetFormItemByLabel("Name")
     name, _ := namef.(*tview.InputField)
     hostnamef := form.GetFormItemByLabel("Hostname")
     hostname, _ := hostnamef.(*tview.InputField)
+    userf := form.GetFormItemByLabel("User")
+    user, _ := userf.(*tview.InputField)
     privkeyf := form.GetFormItemByLabel("Privkey")
     privkey, _ := privkeyf.(*tview.InputField)
+    proxyf := form.GetFormItemByLabel("Proxy")
+    proxy, _ := proxyf.(*tview.InputField)
     form.AddButton("Done", func() {
 	host.Name = name.GetText()
 	host.Hostname = hostname.GetText()
+	host.User = user.GetText()
 	host.Privkey = privkey.GetText()
+	host.Proxy = proxy.GetText()
 	s.app.pages.RemovePage("edit")
     })
     form.AddButton("Cancel", func() {
@@ -218,7 +226,9 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    host.SSHHost = &config.SSHHost{
 		Name: "new name",
 		Hostname: "new hostname",
+		User: "new user",
 		Privkey: "new privkey",
+		Proxy: "",
 		Fwds: []config.Fwd{
 		    config.Fwd{
 			Name: "unknown",
