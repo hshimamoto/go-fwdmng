@@ -17,6 +17,7 @@ type ListItem interface {
 
 type sshhost struct {
     *config.SSHHost
+    connected bool
 }
 
 func (l *sshhost)Header(screen tcell.Screen) {
@@ -34,6 +35,7 @@ func (l *sshhost)Print(screen tcell.Screen, y int, selected bool) {
 
 type sshfwd struct {
     *config.Fwd
+    host *sshhost
 }
 
 func (l *sshfwd)Header(screen tcell.Screen) {
@@ -52,25 +54,31 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
 
 type ServiceList struct {
     *tview.Box
-    cfg *config.Config
+    hosts []*sshhost
     // ui
     app *Application
     items []ListItem
     cursor int
 }
 
-func NewServiceList() *ServiceList {
-    return &ServiceList{ Box: tview.NewBox() }
+func NewServiceList(cfg *config.Config) *ServiceList {
+    s := &ServiceList{ Box: tview.NewBox() }
+    // copy from config
+    s.hosts = []*sshhost{}
+    for i, _ := range cfg.SSHHosts {
+	h := &cfg.SSHHosts[i]
+	s.hosts = append(s.hosts, &sshhost{ SSHHost: h, connected: false })
+    }
+    return s
 }
 
 func (s *ServiceList)UpdateItems() {
     s.items = []ListItem{}
-    for i, _ := range s.cfg.SSHHosts {
-	host := &s.cfg.SSHHosts[i]
-	s.items = append(s.items, &sshhost{ SSHHost: host })
+    for _, host := range s.hosts {
+	s.items = append(s.items, host)
 	for j, _ := range host.Fwds {
 	    f := &host.Fwds[j]
-	    s.items = append(s.items, &sshfwd{ Fwd: f })
+	    s.items = append(s.items, &sshfwd{ Fwd: f, host: host })
 	}
     }
 }
@@ -172,6 +180,7 @@ func (s *ServiceList)Draw(screen tcell.Screen) {
     help += "| <Del> [::u]D[::-]elete "
     help += "| [::u]N[::-]ew host "
     help += "| [::u]A[::-]dd fwd "
+    help += "| [::u]S[::-]tart/Stop "
     help += "| [::u]Q[::-]uit"
     tview.Print(screen, help, x, h, w, tview.AlignLeft, tcell.ColorWhite)
 }
@@ -199,7 +208,8 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    }
 	}
 	newhost := func() {
-	    host := config.SSHHost{
+	    host := &sshhost{}
+	    host.SSHHost = &config.SSHHost{
 		Name: "new name",
 		Hostname: "new hostname",
 		Privkey: "new privkey",
@@ -211,80 +221,65 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		    },
 		},
 	    }
-	    s.cfg.SSHHosts = append(s.cfg.SSHHosts, host)
+	    host.connected = false
+	    s.hosts = append(s.hosts, host)
 	}
 	addfwd := func() {
 	    item := s.items[s.cursor]
-	    if host, ok := item.(*sshhost); ok {
-		host.SSHHost.Fwds = append(host.SSHHost.Fwds, config.Fwd{
-		    Name: "unknown",
-		    Local: ":0",
-		    Remote: "127.0.0.1:0",
-		})
+	    fwd := config.Fwd{
+		Name: "unknown",
+		Local: ":0",
+		Remote: "127.0.0.1:0",
 	    }
-	    if _, ok := item.(*sshfwd); ok {
-		i := 0
-		for i = s.cursor - 1; i >= 0; i-- {
-		    if host, ok := s.items[i].(*sshhost); ok {
-			host.SSHHost.Fwds = append(host.SSHHost.Fwds, config.Fwd{
-			    Name: "unknown",
-			    Local: ":0",
-			    Remote: "127.0.0.1:0",
-			})
-			break
-		    }
-		}
+	    if host, ok := item.(*sshhost); ok {
+		host.SSHHost.Fwds = append(host.SSHHost.Fwds, fwd)
+	    }
+	    if f, ok := item.(*sshfwd); ok {
+		host := f.host
+		host.SSHHost.Fwds = append(host.SSHHost.Fwds, fwd)
 	    }
 	}
 	del := func() {
 	    // what is the target item
 	    name := ""
-	    target := s.cursor
-	    item := s.items[target]
-	    var targethost *config.SSHHost = nil
-	    var targetfwd *config.Fwd = nil
-	    if host, ok := item.(*sshhost); ok {
-		name = host.Name
-		targethost = host.SSHHost
+	    target := s.items[s.cursor]
+	    if f, ok := target.(*sshfwd); ok {
+		if len(f.host.Fwds) == 1 {
+		    target = f.host
+		}
 	    }
-	    if fwd, ok := item.(*sshfwd); ok {
-		host := s.items[0].(*sshhost)
-		i := 0
-		for i = target - 1; i >= 0; i-- {
-		    if tmp, ok := s.items[i].(*sshhost); ok {
-			host = tmp
-			break
-		    }
-		}
-		targethost = host.SSHHost
-		if len(host.Fwds) > 1 {
-		    name = fmt.Sprintf("%s:%s", host.Name, fwd.Name)
-		    targetfwd = fwd.Fwd
-		} else {
-		    target = i
-		    name = host.Name
-		}
+	    switch it := target.(type) {
+	    case *sshhost: name = it.Name
+	    case *sshfwd: name = fmt.Sprintf("%s:%s", it.host.Name, it.Name)
 	    }
 	    // confirm
 	    s.Confirm(fmt.Sprintf("Delete %s ?", name), func() {
-		if targetfwd != nil {
-		    // remove one Fwd
-		    fwds := []config.Fwd{}
-		    for i, _ := range targethost.Fwds {
-			if targetfwd != &targethost.Fwds[i] {
-			    fwds = append(fwds, targethost.Fwds[i])
+		if h, ok := target.(*sshhost); ok {
+		    newlist := []*sshhost{}
+		    for _, p := range s.hosts {
+			if h == p {
+			    continue
 			}
+			newlist = append(newlist, p)
 		    }
-		    targethost.Fwds = fwds
-		} else {
-		    // remove SSHHost
-		    hosts := []config.SSHHost{}
-		    for i, _ := range s.cfg.SSHHosts {
-			if targethost != &s.cfg.SSHHosts[i] {
-			    hosts = append(hosts, s.cfg.SSHHosts[i])
+		    s.hosts = newlist
+		}
+		if f, ok := target.(*sshfwd); ok {
+		    h := f.host
+		    newlist := []config.Fwd{}
+		    for i, _ := range h.Fwds {
+			p := &h.Fwds[i]
+			if f.Fwd == p {
+			    continue
 			}
+			newlist = append(newlist, *p)
 		    }
-		    s.cfg.SSHHosts = hosts
+		    h.Fwds = newlist
+		}
+		s.UpdateItems()
+		last = len(s.items) - 1
+		if s.cursor > last {
+		    s.cursor = last
 		}
 	    })
 	}
@@ -311,17 +306,20 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 type Application struct {
     *tview.Application
     pages *tview.Pages
+    s *ServiceList
+    cfg *config.Config
 }
 
 func NewApplication(cfg *config.Config) *Application {
     app := &Application{
 	Application: tview.NewApplication(),
 	pages: tview.NewPages(),
+	cfg: cfg,
     }
-    list := NewServiceList()
-    list.cfg = cfg
+    list := NewServiceList(cfg)
     app.pages.AddPage("main", list, true, true)
     list.app = app
+    app.s = list
     app.SetRoot(app.pages, true)
     return app
 }
@@ -340,6 +338,15 @@ func (a *Application)Run() error {
 	return event
     })
     return a.Application.Run()
+}
+
+func (a *Application)Stop() {
+    // for save sshhosts
+    a.cfg.SSHHosts = []config.SSHHost{}
+    for _, host := range a.s.hosts {
+	a.cfg.SSHHosts = append(a.cfg.SSHHosts, *host.SSHHost)
+    }
+    a.Application.Stop()
 }
 
 func main() {
