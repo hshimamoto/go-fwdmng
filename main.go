@@ -4,11 +4,17 @@ package main
 
 import (
     "fmt"
+    "io/ioutil"
+    "net"
+    "strings"
     "time"
 
     "fwdmng/config"
     "github.com/gdamore/tcell"
     "github.com/rivo/tview"
+
+    "golang.org/x/crypto/ssh"
+    "github.com/hshimamoto/go-session"
 )
 
 type ListItem interface {
@@ -19,6 +25,7 @@ type ListItem interface {
 type sshhost struct {
     *config.SSHHost
     status string
+    client *ssh.Client
 }
 
 func (l *sshhost)Header(screen tcell.Screen) {
@@ -38,7 +45,57 @@ func (l *sshhost)Print(screen tcell.Screen, y int, selected bool) {
 func (h *sshhost)Connect(done func()) {
     h.status = "connecting"
     go func() {
-	time.Sleep(time.Second * 5)
+	failure := func() {
+	    h.status = "failure"
+	    done()
+	    time.Sleep(time.Second * 5)
+	    h.status = "disconnected"
+	    done()
+	}
+	cfg := &ssh.ClientConfig{
+	    User: h.User,
+	    HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	// get key
+	buf, err := ioutil.ReadFile(h.Privkey)
+	if err != nil {
+	    failure()
+	    return
+	}
+	key, err := ssh.ParsePrivateKey(buf)
+	if err != nil {
+	    failure()
+	    return
+	}
+	cfg.Auth = []ssh.AuthMethod{ ssh.PublicKeys(key) }
+	//
+	var conn net.Conn
+	hostport := h.Hostname
+	if strings.Index(hostport, ":") < 0 {
+	    hostport += ":22"
+	}
+	if h.Proxy != "" {
+	    var err error
+	    conn, err = session.Corkscrew(h.Proxy, hostport)
+	    if err != nil {
+		failure()
+		return
+	    }
+	} else {
+	    var err error
+	    conn, err = session.Dial(hostport)
+	    if err != nil {
+		failure()
+		return
+	    }
+	}
+	// ssh handshake
+	cconn, cchans, creqs, err := ssh.NewClientConn(conn, hostport, cfg)
+	if err != nil {
+	    failure()
+	    return
+	}
+	h.client = ssh.NewClient(cconn, cchans, creqs)
 	h.status = "connected"
 	done()
     }()
@@ -47,9 +104,19 @@ func (h *sshhost)Connect(done func()) {
 func (h *sshhost)Disconnect(done func()) {
     h.status = "disconnecting"
     go func() {
-	time.Sleep(time.Second * 5)
+	if h.client == nil {
+	    time.Sleep(time.Second)
+	    h.status = "disconnected"
+	    done()
+	    return
+	}
+	// close client
+	h.client.Close()
+	h.client = nil
+	time.Sleep(time.Second)
 	h.status = "disconnected"
 	done()
+	return
     }()
 }
 
@@ -87,7 +154,7 @@ func NewServiceList(cfg *config.Config) *ServiceList {
     s.hosts = []*sshhost{}
     for i, _ := range cfg.SSHHosts {
 	h := &cfg.SSHHosts[i]
-	s.hosts = append(s.hosts, &sshhost{ SSHHost: h, status: "disconnected" })
+	s.hosts = append(s.hosts, &sshhost{ SSHHost: h, status: "disconnected", client: nil })
     }
     return s
 }
@@ -253,6 +320,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		},
 	    }
 	    host.status = "disconnected"
+	    host.client = nil
 	    s.hosts = append(s.hosts, host)
 	}
 	addfwd := func() {
