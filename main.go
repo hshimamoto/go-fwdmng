@@ -26,6 +26,7 @@ type sshhost struct {
     *config.SSHHost
     status string
     client *ssh.Client
+    fwds []*sshfwd
 }
 
 func (l *sshhost)Header(screen tcell.Screen) {
@@ -153,8 +154,21 @@ func NewServiceList(cfg *config.Config) *ServiceList {
     // copy from config
     s.hosts = []*sshhost{}
     for i, _ := range cfg.SSHHosts {
-	h := &cfg.SSHHosts[i]
-	s.hosts = append(s.hosts, &sshhost{ SSHHost: h, status: "disconnected", client: nil })
+	host := &sshhost{
+	    SSHHost: &cfg.SSHHosts[i],
+	    status: "disconnected",
+	    client: nil,
+	    fwds: []*sshfwd{},
+	}
+	// copy fwds
+	for j, _ := range host.Fwds {
+	    fwd := &sshfwd{
+		Fwd: &host.Fwds[j],
+		host: host,
+	    }
+	    host.fwds = append(host.fwds, fwd)
+	}
+	s.hosts = append(s.hosts, host)
     }
     return s
 }
@@ -163,9 +177,8 @@ func (s *ServiceList)UpdateItems() {
     s.items = []ListItem{}
     for _, host := range s.hosts {
 	s.items = append(s.items, host)
-	for j, _ := range host.Fwds {
-	    f := &host.Fwds[j]
-	    s.items = append(s.items, &sshfwd{ Fwd: f, host: host })
+	for _, fwd := range host.fwds {
+	    s.items = append(s.items, fwd)
 	}
     }
 }
@@ -321,28 +334,38 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    }
 	    host.status = "disconnected"
 	    host.client = nil
+	    host.fwds = []*sshfwd{
+		&sshfwd{
+		    Fwd: &config.Fwd{
+			Name: "unknown",
+			Local: ":0",
+			Remote: "127.0.0.1:0",
+		    },
+		    host: host,
+		},
+	    }
 	    s.hosts = append(s.hosts, host)
 	}
 	addfwd := func() {
-	    fwd := config.Fwd{
-		Name: "unknown",
-		Local: ":0",
-		Remote: "127.0.0.1:0",
+	    fwd := &sshfwd{
+		Fwd: &config.Fwd{
+		    Name: "unknown",
+		    Local: ":0",
+		    Remote: "127.0.0.1:0",
+		},
 	    }
-	    if host, ok := item.(*sshhost); ok {
-		host.SSHHost.Fwds = append(host.SSHHost.Fwds, fwd)
-	    }
+	    host, _ := item.(*sshhost)
 	    if f, ok := item.(*sshfwd); ok {
-		host := f.host
-		host.SSHHost.Fwds = append(host.SSHHost.Fwds, fwd)
+		host = f.host
 	    }
+	    host.fwds = append(host.fwds, fwd)
 	}
 	del := func() {
 	    // what is the target item
 	    name := ""
 	    target := item
 	    if f, ok := target.(*sshfwd); ok {
-		if len(f.host.Fwds) == 1 {
+		if len(f.host.fwds) == 1 {
 		    target = f.host
 		}
 	    }
@@ -364,15 +387,14 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		}
 		if f, ok := target.(*sshfwd); ok {
 		    h := f.host
-		    newlist := []config.Fwd{}
-		    for i, _ := range h.Fwds {
-			p := &h.Fwds[i]
-			if f.Fwd == p {
+		    newlist := []*sshfwd{}
+		    for _, p := range h.fwds {
+			if f == p {
 			    continue
 			}
-			newlist = append(newlist, *p)
+			newlist = append(newlist, p)
 		    }
-		    h.Fwds = newlist
+		    h.fwds = newlist
 		}
 		s.UpdateItems()
 		last = len(s.items) - 1
@@ -466,6 +488,11 @@ func (a *Application)Stop() {
     cfg := &config.Config{}
     cfg.SSHHosts = []config.SSHHost{}
     for _, host := range a.s.hosts {
+	// update Fwds
+	host.SSHHost.Fwds = []config.Fwd{}
+	for _, fwd := range host.fwds {
+	    host.SSHHost.Fwds = append(host.SSHHost.Fwds, *fwd.Fwd)
+	}
 	cfg.SSHHosts = append(cfg.SSHHosts, *host.SSHHost)
     }
     config.Save(cfg, a.cfgpath)
