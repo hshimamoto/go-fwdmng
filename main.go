@@ -4,6 +4,7 @@ package main
 
 import (
     "fmt"
+    "time"
 
     "fwdmng/config"
     "github.com/gdamore/tcell"
@@ -17,7 +18,7 @@ type ListItem interface {
 
 type sshhost struct {
     *config.SSHHost
-    connected bool
+    status string
 }
 
 func (l *sshhost)Header(screen tcell.Screen) {
@@ -31,11 +32,25 @@ func (l *sshhost)Print(screen tcell.Screen, y int, selected bool) {
     if selected { color = tcell.ColorLime }
     tview.Print(screen, l.Name, 1, y, 16, tview.AlignLeft, color)
     tview.Print(screen, l.Hostname, 17, y, 32, tview.AlignLeft, color)
-    if l.connected {
-	tview.Print(screen, "connected", 49, y, 16, tview.AlignLeft, color)
-    } else {
-	tview.Print(screen, "not connected", 49, y, 16, tview.AlignLeft, color)
-    }
+    tview.Print(screen, l.status, 49, y, 16, tview.AlignLeft, color)
+}
+
+func (h *sshhost)Connect(done func()) {
+    h.status = "connecting"
+    go func() {
+	time.Sleep(time.Second * 5)
+	h.status = "connected"
+	done()
+    }()
+}
+
+func (h *sshhost)Disconnect(done func()) {
+    h.status = "disconnecting"
+    go func() {
+	time.Sleep(time.Second * 5)
+	h.status = "disconnected"
+	done()
+    }()
 }
 
 type sshfwd struct {
@@ -72,7 +87,7 @@ func NewServiceList(cfg *config.Config) *ServiceList {
     s.hosts = []*sshhost{}
     for i, _ := range cfg.SSHHosts {
 	h := &cfg.SSHHosts[i]
-	s.hosts = append(s.hosts, &sshhost{ SSHHost: h, connected: false })
+	s.hosts = append(s.hosts, &sshhost{ SSHHost: h, status: "disconnected" })
     }
     return s
 }
@@ -201,6 +216,7 @@ func (s *ServiceList)Draw(screen tcell.Screen) {
 
 func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
     return s.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
+	item := s.items[s.cursor]
 	last := len(s.items) - 1
 	up := func() {
 	    s.cursor--
@@ -215,7 +231,6 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    }
 	}
 	edit := func() {
-	    item := s.items[s.cursor]
 	    switch item := item.(type) {
 	    case *sshhost: s.EditSSHHost(item)
 	    case *sshfwd: s.EditSSHFwd(item)
@@ -237,11 +252,10 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		    },
 		},
 	    }
-	    host.connected = false
+	    host.status = "disconnected"
 	    s.hosts = append(s.hosts, host)
 	}
 	addfwd := func() {
-	    item := s.items[s.cursor]
 	    fwd := config.Fwd{
 		Name: "unknown",
 		Local: ":0",
@@ -258,7 +272,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	del := func() {
 	    // what is the target item
 	    name := ""
-	    target := s.items[s.cursor]
+	    target := item
 	    if f, ok := target.(*sshfwd); ok {
 		if len(f.host.Fwds) == 1 {
 		    target = f.host
@@ -314,6 +328,24 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	case 'n': newhost()
 	case 'a': addfwd()
 	case 'd': del()
+	case 's':
+	    host, ok := item.(*sshhost)
+	    if !ok {
+		fwd := item.(*sshfwd)
+		host = fwd.host
+	    }
+	    switch host.status {
+	    case "connected":
+		host.Disconnect(func() {
+		    // TODO
+		    s.app.Draw()
+		})
+	    case "disconnected":
+		host.Connect(func() {
+		    // TODO
+		    s.app.Draw()
+		})
+	    }
 	case 'q': s.Quit()
 	}
     })
