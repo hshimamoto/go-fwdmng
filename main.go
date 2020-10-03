@@ -98,6 +98,10 @@ func (h *sshhost)Connect(done func()) {
 	}
 	h.client = ssh.NewClient(cconn, cchans, creqs)
 	h.status = "connected"
+	// start local servers
+	for _, f := range h.fwds {
+	    f.LocalStart()
+	}
 	done()
     }()
 }
@@ -115,6 +119,11 @@ func (h *sshhost)Disconnect(done func()) {
 	h.client.Close()
 	h.client = nil
 	time.Sleep(time.Second)
+	// stopping fwds
+	for _, f := range h.fwds {
+	    go f.LocalStop()
+	}
+	time.Sleep(time.Second)
 	h.status = "disconnected"
 	done()
 	return
@@ -124,6 +133,7 @@ func (h *sshhost)Disconnect(done func()) {
 type sshfwd struct {
     *config.Fwd
     host *sshhost
+    serv *session.Server
 }
 
 func (l *sshfwd)Header(screen tcell.Screen) {
@@ -137,7 +147,29 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
     // U+2192 = RIGHTWARDS ARROW
     hostports := fmt.Sprintf("%s \u2192 %s", l.Local, l.Remote)
     tview.Print(screen, l.Name, 2, y, 16, tview.AlignLeft, color)
-    tview.Print(screen, hostports, 18, y, 32, tview.AlignLeft, color)
+    tview.Print(screen, hostports, 20, y, 32, tview.AlignLeft, color)
+    if l.serv != nil {
+	tview.Print(screen, "listening", 54, y, 16, tview.AlignLeft, color)
+    }
+}
+
+func (f *sshfwd)LocalStart() {
+    serv, err := session.NewServer(f.Local, func(conn net.Conn) {
+	defer conn.Close()
+    })
+    if err != nil {
+	return
+    }
+    go serv.Run()
+    f.serv = serv
+}
+
+func (f *sshfwd)LocalStop() {
+    if f.serv != nil {
+	f.serv.Stop()
+	time.Sleep(time.Second)
+	f.serv = nil
+    }
 }
 
 type ServiceList struct {
@@ -165,6 +197,7 @@ func NewServiceList(cfg *config.Config) *ServiceList {
 	    fwd := &sshfwd{
 		Fwd: &host.Fwds[j],
 		host: host,
+		serv: nil,
 	    }
 	    host.fwds = append(host.fwds, fwd)
 	}
@@ -342,6 +375,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 			Remote: "127.0.0.1:0",
 		    },
 		    host: host,
+		    serv: nil,
 		},
 	    }
 	    s.hosts = append(s.hosts, host)
