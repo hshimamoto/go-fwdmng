@@ -38,16 +38,16 @@ type sshhost struct {
 
 func (l *sshhost)Header(screen tcell.Screen) {
     tview.Print(screen, "[yellow::b]Name", 1, 0, 16, tview.AlignLeft, tcell.ColorWhite)
-    tview.Print(screen, "[yellow::b]Hostname", 17, 0, 32, tview.AlignLeft, tcell.ColorWhite)
-    tview.Print(screen, "[yellow::b]Status", 49, 0, 16, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Hostname", 19, 0, 32, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Status", 53, 0, 16, tview.AlignLeft, tcell.ColorWhite)
 }
 
 func (l *sshhost)Print(screen tcell.Screen, y int, selected bool) {
     color := tcell.ColorWhite
     if selected { color = tcell.ColorLime }
     tview.Print(screen, l.Name, 1, y, 16, tview.AlignLeft, color)
-    tview.Print(screen, l.Hostname, 17, y, 32, tview.AlignLeft, color)
-    tview.Print(screen, l.status, 49, y, 16, tview.AlignLeft, color)
+    tview.Print(screen, l.Hostname, 19, y, 32, tview.AlignLeft, color)
+    tview.Print(screen, l.status, 53, y, 16, tview.AlignLeft, color)
 }
 
 func (h *sshhost)Connect(done func()) {
