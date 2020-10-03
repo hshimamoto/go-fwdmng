@@ -295,11 +295,18 @@ func (s *ServiceList)EditSSHFwd(fwd *sshfwd) {
     remotef := form.GetFormItemByLabel("Remote")
     remote, _ := remotef.(*tview.InputField)
     form.AddButton("Done", func() {
+	changed := false
 	fwd.Name = name.GetText()
-	fwd.Local = local.GetText()
+	if fwd.Local != local.GetText() {
+	    fwd.Local = local.GetText()
+	    changed = true
+	}
 	fwd.Remote = remote.GetText()
 	s.app.pages.RemovePage("edit")
 	if fwd.host.status == "connected" {
+	    if changed {
+		fwd.LocalStop()
+	    }
 	    fwd.LocalStart()
 	}
     })
