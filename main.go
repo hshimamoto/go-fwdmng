@@ -14,8 +14,14 @@ import (
     "github.com/rivo/tview"
 
     "golang.org/x/crypto/ssh"
+    "github.com/hshimamoto/go-iorelay"
     "github.com/hshimamoto/go-session"
 )
+
+type fwdreq struct {
+    conn net.Conn
+    remote string
+}
 
 type ListItem interface {
     Header(tcell.Screen)
@@ -27,6 +33,7 @@ type sshhost struct {
     status string
     client *ssh.Client
     fwds []*sshfwd
+    q chan fwdreq
 }
 
 func (l *sshhost)Header(screen tcell.Screen) {
@@ -98,10 +105,38 @@ func (h *sshhost)Connect(done func()) {
 	}
 	h.client = ssh.NewClient(cconn, cchans, creqs)
 	h.status = "connected"
+	h.q = make(chan fwdreq, 32)
 	// start local servers
 	for _, f := range h.fwds {
 	    f.LocalStart()
 	}
+	// loop
+	go func() {
+	    ticker := time.NewTicker(time.Second * 10)
+	    keepalive := time.Now().Add(time.Minute)
+	    for h.client != nil {
+		select {
+		case req := <-h.q:
+		    // forward to req
+		    go func() {
+			defer req.conn.Close()
+			conn, err := h.client.Dial("tcp", req.remote)
+			if err != nil {
+			    return
+			}
+			defer conn.Close()
+			iorelay.Relay(req.conn, conn)
+			time.Sleep(time.Second)
+		    }()
+		case <-ticker.C:
+		    now := time.Now()
+		    if now.After(keepalive) {
+			h.client.SendRequest("keepalive@golang.org", true, nil)
+			keepalive = now.Add(time.Minute)
+		    }
+		}
+	    }
+	}()
 	done()
     }()
 }
@@ -165,7 +200,7 @@ func (f *sshfwd)LocalStart() {
 	return
     }
     serv, err := session.NewServer(f.Local, func(conn net.Conn) {
-	defer conn.Close()
+	f.host.q <- fwdreq{ conn: conn, remote: f.Remote }
     })
     if err != nil {
 	return
