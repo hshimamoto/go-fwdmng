@@ -154,6 +154,16 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
 }
 
 func (f *sshfwd)LocalStart() {
+    if f.serv != nil {
+	return
+    }
+    hp := strings.Split(f.Local, ":")
+    if len(hp) != 2 {
+	return
+    }
+    if hp[1] == "0" {
+	return
+    }
     serv, err := session.NewServer(f.Local, func(conn net.Conn) {
 	defer conn.Close()
     })
@@ -289,6 +299,9 @@ func (s *ServiceList)EditSSHFwd(fwd *sshfwd) {
 	fwd.Local = local.GetText()
 	fwd.Remote = remote.GetText()
 	s.app.pages.RemovePage("edit")
+	if fwd.host.status == "connected" {
+	    fwd.LocalStart()
+	}
     })
     form.AddButton("Cancel", func() {
 	s.app.pages.RemovePage("edit")
@@ -438,6 +451,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    if f, ok := item.(*sshfwd); ok {
 		host = f.host
 	    }
+	    fwd.host = host
 	    host.fwds = append(host.fwds, fwd)
 	}
 	switch event.Key() {
