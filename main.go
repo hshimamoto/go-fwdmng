@@ -296,6 +296,52 @@ func (s *ServiceList)EditSSHFwd(fwd *sshfwd) {
     s.app.pages.AddAndSwitchToPage("edit", form, true)
 }
 
+func (s *ServiceList)DeleteItem() {
+    target := s.items[s.cursor]
+    if fwd, ok := target.(*sshfwd); ok {
+	if len(fwd.host.fwds) == 1 {
+	    target = fwd.host
+	}
+    }
+    // check running?
+    if host, ok := target.(*sshhost); ok {
+	if host.status != "disconnected" {
+	    // ignore
+	    return
+	}
+    }
+    name := "unknown"
+    switch it := target.(type) {
+    case *sshhost: name = it.Name
+    case *sshfwd: name = fmt.Sprintf("%s:%s", it.host.Name, it.Name)
+    }
+    // confirm
+    s.Confirm(fmt.Sprintf("Delete %s ?", name), func() {
+	switch it := target.(type) {
+	case *sshhost:
+	    newlist := []*sshhost{}
+	    for _, p := range s.hosts {
+		if it != p {
+		    newlist = append(newlist, p)
+		}
+	    }
+	    s.hosts = newlist
+	case *sshfwd:
+	    // stop if it running in background
+	    if it.serv != nil {
+		go it.LocalStop()
+	    }
+	    newlist := []*sshfwd{}
+	    for _, p := range it.host.fwds {
+		if it != p {
+		    newlist = append(newlist, p)
+		}
+	    }
+	    it.host.fwds = newlist
+	}
+    })
+}
+
 func (s *ServiceList)Draw(screen tcell.Screen) {
     s.UpdateItems()
     s.Box.Draw(screen)
@@ -394,56 +440,13 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    }
 	    host.fwds = append(host.fwds, fwd)
 	}
-	del := func() {
-	    // what is the target item
-	    name := ""
-	    target := item
-	    if f, ok := target.(*sshfwd); ok {
-		if len(f.host.fwds) == 1 {
-		    target = f.host
-		}
-	    }
-	    switch it := target.(type) {
-	    case *sshhost: name = it.Name
-	    case *sshfwd: name = fmt.Sprintf("%s:%s", it.host.Name, it.Name)
-	    }
-	    // confirm
-	    s.Confirm(fmt.Sprintf("Delete %s ?", name), func() {
-		if h, ok := target.(*sshhost); ok {
-		    newlist := []*sshhost{}
-		    for _, p := range s.hosts {
-			if h == p {
-			    continue
-			}
-			newlist = append(newlist, p)
-		    }
-		    s.hosts = newlist
-		}
-		if f, ok := target.(*sshfwd); ok {
-		    h := f.host
-		    newlist := []*sshfwd{}
-		    for _, p := range h.fwds {
-			if f == p {
-			    continue
-			}
-			newlist = append(newlist, p)
-		    }
-		    h.fwds = newlist
-		}
-		s.UpdateItems()
-		last = len(s.items) - 1
-		if s.cursor > last {
-		    s.cursor = last
-		}
-	    })
-	}
 	switch event.Key() {
 	case tcell.KeyUp: up()
 	case tcell.KeyDown: down()
 	case tcell.KeyHome: s.cursor = 0
 	case tcell.KeyEnd: s.cursor = last
 	case tcell.KeyEnter: edit()
-	case tcell.KeyDelete: del()
+	case tcell.KeyDelete: s.DeleteItem()
 	}
 	switch event.Rune() {
 	case 'k': up()
@@ -451,7 +454,7 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	case 'e': edit()
 	case 'n': newhost()
 	case 'a': addfwd()
-	case 'd': del()
+	case 'd': s.DeleteItem()
 	case 's':
 	    host, ok := item.(*sshhost)
 	    if !ok {
