@@ -85,7 +85,6 @@ func (h *sshhost)Connect(done func()) {
     go func() {
 	failure := func() {
 	    h.status = "failure"
-	    done()
 	    time.Sleep(time.Second * 5)
 	    h.status = "disconnected"
 	    done()
@@ -587,6 +586,8 @@ type Application struct {
     pages *tview.Pages
     s *ServiceList
     cfgpath string
+    lastDraw time.Time
+    running bool
 }
 
 func NewApplication(cfgpath string) *Application {
@@ -608,6 +609,11 @@ func NewApplication(cfgpath string) *Application {
     return app
 }
 
+func (a *Application)Draw() {
+    a.Application.Draw()
+    a.lastDraw = time.Now()
+}
+
 func (a *Application)Run() error {
     triple_ctrl_c := 0
     a.Application.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -621,10 +627,24 @@ func (a *Application)Run() error {
 	triple_ctrl_c = 0
 	return event
     })
+    a.lastDraw = time.Now()
+    // periodic Draw
+    go func() {
+	ticker := time.NewTicker(time.Second)
+	for a.running {
+	    <-ticker.C
+	    if time.Now().After(a.lastDraw.Add(time.Second)) {
+		a.Draw()
+	    }
+	}
+    }()
+    a.running = true
     return a.Application.Run()
 }
 
 func (a *Application)Stop() {
+    // turn of flag
+    a.running = false
     // for save sshhosts
     cfg := &config.Config{}
     cfg.SSHHosts = []config.SSHHost{}
