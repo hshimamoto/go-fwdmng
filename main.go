@@ -22,6 +22,7 @@ import (
 type fwdconn struct {
     rw io.ReadWriter
     rb, wb int64
+    cancel bool
 }
 
 func NewFwdconn(rw io.ReadWriter) *fwdconn {
@@ -29,23 +30,44 @@ func NewFwdconn(rw io.ReadWriter) *fwdconn {
     fc.rw = rw
     fc.rb = 0
     fc.wb = 0
+    fc.cancel = false
     return fc
 }
 
 func (fc *fwdconn)Read(p []byte) (int, error) {
-    n, err := fc.rw.Read(p)
-    if err == nil {
+    for {
+	if fc.cancel {
+	    return 0, fmt.Errorf("canceled")
+	}
+	if conn, ok := fc.rw.(net.Conn); ok {
+	    conn.SetReadDeadline(time.Now().Add(time.Second))
+	}
+	n, err := fc.rw.Read(p)
+	if err != nil {
+	    if operr, ok := err.(*net.OpError); ok {
+		if operr.Timeout() {
+		    continue
+		}
+	    }
+	}
 	fc.rb += int64(n)
+	return n, err
     }
-    return n, err
 }
 
 func (fc *fwdconn)Write(p []byte) (int, error) {
+    if fc.cancel {
+	return 0, fmt.Errorf("canceled")
+    }
     n, err := fc.rw.Write(p)
     if err == nil {
 	fc.wb += int64(n)
     }
     return n, err
+}
+
+func (fc *fwdconn)Cancel() {
+    fc.cancel = true
 }
 
 type fwdreq struct {
@@ -194,10 +216,28 @@ func (h *sshhost)Disconnect(done func()) {
     }()
 }
 
+type fwding struct {
+    conn1, conn2 *fwdconn
+    mng *sshfwd
+}
+
+func (f* fwding)Forward() {
+    iorelay.Relay(f.conn1, f.conn2)
+    // mark canceled
+    f.Cancel()
+    time.Sleep(time.Second)
+}
+
+func (f *fwding)Cancel() {
+    f.conn1.Cancel()
+    f.conn2.Cancel()
+}
+
 type sshfwd struct {
     *config.Fwd
     host *sshhost
     serv *session.Server
+    fwdings []*fwding
 }
 
 func (l *sshfwd)Header(screen tcell.Screen) {
@@ -244,10 +284,16 @@ func (f *sshfwd)LocalStart() {
 	}
 	defer rconn.Close()
 	// now conn and rconn ok
-	io1 := NewFwdconn(conn)
-	io2 := NewFwdconn(rconn)
-	iorelay.Relay(io1, io2)
-	time.Sleep(time.Second)
+	conn1 := NewFwdconn(conn)
+	conn2 := NewFwdconn(rconn)
+	fwding := &fwding{
+	    conn1: conn1,
+	    conn2: conn2,
+	    mng: f,
+	}
+	f.fwdings = append(f.fwdings, fwding)
+	fwding.Forward()
+	f.RemoveFwding(fwding)
     })
     if err != nil {
 	return
@@ -259,9 +305,23 @@ func (f *sshfwd)LocalStart() {
 func (f *sshfwd)LocalStop() {
     if f.serv != nil {
 	f.serv.Stop()
+	// canceling all forwardings
+	for _, fwding := range f.fwdings {
+	    fwding.Cancel()
+	}
 	time.Sleep(time.Second)
 	f.serv = nil
     }
+}
+
+func (f *sshfwd)RemoveFwding(fp *fwding) {
+    newlist := []*fwding{}
+    for _, p := range f.fwdings {
+	if fp != p {
+	    newlist = append(newlist, p)
+	}
+    }
+    f.fwdings = newlist
 }
 
 type ServiceList struct {
