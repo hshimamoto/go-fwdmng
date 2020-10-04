@@ -253,7 +253,11 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
     tview.Print(screen, l.Name, 2, y, 16, tview.AlignLeft, color)
     tview.Print(screen, hostports, 20, y, 32, tview.AlignLeft, color)
     if l.serv != nil {
-	tview.Print(screen, "listening", 54, y, 16, tview.AlignLeft, color)
+	tview.Print(screen, "listening", 54, y, 12, tview.AlignLeft, color)
+    }
+    nr_fwding := len(l.fwdings)
+    if nr_fwding > 0 {
+	tview.Print(screen, fmt.Sprintf("%d", nr_fwding), 68, y, 4, tview.AlignLeft, color)
     }
 }
 
@@ -309,7 +313,10 @@ func (f *sshfwd)LocalStop() {
 	for _, fwding := range f.fwdings {
 	    fwding.Cancel()
 	}
-	time.Sleep(time.Second)
+	// wait
+	for len(f.fwdings) > 0 {
+	    time.Sleep(time.Second)
+	}
 	f.serv = nil
     }
 }
