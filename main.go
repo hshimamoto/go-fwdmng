@@ -4,6 +4,7 @@ package main
 
 import (
     "fmt"
+    "io"
     "io/ioutil"
     "net"
     "strings"
@@ -18,9 +19,38 @@ import (
     "github.com/hshimamoto/go-session"
 )
 
+type fwdconn struct {
+    rw io.ReadWriter
+    rb, wb int64
+}
+
+func NewFwdconn(rw io.ReadWriter) *fwdconn {
+    fc := &fwdconn{}
+    fc.rw = rw
+    fc.rb = 0
+    fc.wb = 0
+    return fc
+}
+
+func (fc *fwdconn)Read(p []byte) (int, error) {
+    n, err := fc.rw.Read(p)
+    if err == nil {
+	fc.rb += int64(n)
+    }
+    return n, err
+}
+
+func (fc *fwdconn)Write(p []byte) (int, error) {
+    n, err := fc.rw.Write(p)
+    if err == nil {
+	fc.wb += int64(n)
+    }
+    return n, err
+}
+
 type fwdreq struct {
-    conn net.Conn
     remote string
+    resp chan<- net.Conn
 }
 
 type ListItem interface {
@@ -119,14 +149,14 @@ func (h *sshhost)Connect(done func()) {
 		case req := <-h.q:
 		    // forward to req
 		    go func() {
-			defer req.conn.Close()
+			var conn net.Conn = nil
+			defer close(req.resp)
 			conn, err := h.client.Dial("tcp", req.remote)
 			if err != nil {
+			    req.resp <- net.Conn(nil)
 			    return
 			}
-			defer conn.Close()
-			iorelay.Relay(req.conn, conn)
-			time.Sleep(time.Second)
+			req.resp <- conn
 		    }()
 		case <-ticker.C:
 		    now := time.Now()
@@ -200,7 +230,25 @@ func (f *sshfwd)LocalStart() {
 	return
     }
     serv, err := session.NewServer(f.Local, func(conn net.Conn) {
-	f.host.q <- fwdreq{ conn: conn, remote: f.Remote }
+	defer conn.Close()
+	if f.host.client == nil {
+	    return
+	}
+	resp := make(chan net.Conn)
+	f.host.q <- fwdreq{ remote: f.Remote, resp: resp }
+	rconn, ok := <-resp
+	if !ok {
+	    return
+	}
+	if rconn == nil {
+	    return
+	}
+	defer rconn.Close()
+	// now conn and rconn ok
+	io1 := NewFwdconn(conn)
+	io2 := NewFwdconn(rconn)
+	iorelay.Relay(io1, io2)
+	time.Sleep(time.Second)
     })
     if err != nil {
 	return
