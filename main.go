@@ -243,7 +243,7 @@ type sshfwd struct {
 
 func (l *sshfwd)Header(screen tcell.Screen) {
     tview.Print(screen, "[yellow::b]Proto", 2, 0, 12, tview.AlignLeft, tcell.ColorWhite)
-    tview.Print(screen, "[yellow::b]Forwarding", 14, 0, 32, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Forwarding", 16, 0, 32, tview.AlignLeft, tcell.ColorWhite)
 }
 
 func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
@@ -252,13 +252,13 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
     // U+2192 = RIGHTWARDS ARROW
     hostports := fmt.Sprintf("%s \u2192 %s", l.Local, l.Remote)
     tview.Print(screen, l.Name, 2, y, 12, tview.AlignLeft, color)
-    tview.Print(screen, hostports, 16, y, 32, tview.AlignLeft, color)
+    tview.Print(screen, hostports, 16, y, 36, tview.AlignLeft, color)
     if l.serv != nil {
-	tview.Print(screen, "listening", 50, y, 12, tview.AlignLeft, color)
+	tview.Print(screen, "OK", 54, y, 2, tview.AlignLeft, color)
     }
     nr_fwding := len(l.fwdings)
     if nr_fwding > 0 {
-	tview.Print(screen, fmt.Sprintf("%d", nr_fwding), 64, y, 4, tview.AlignLeft, color)
+	tview.Print(screen, fmt.Sprintf("%d", nr_fwding), 58, y, 4, tview.AlignLeft, color)
     }
     b := l.cb
     for _, fp := range l.fwdings {
@@ -266,7 +266,15 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
 	b += fp.conn2.rb + fp.conn2.wb
     }
     if b > 0 {
-	tview.Print(screen, fmt.Sprintf("%dB", b), 70, y, 12, tview.AlignLeft, color)
+	s := ""
+	if b < 1024*1024 {
+	    s = fmt.Sprintf("%dB", b)
+	} else if b < 1024*1024*1024 {
+	    s = fmt.Sprintf("%dKiB", b/1024)
+	} else {
+	    s = fmt.Sprintf("%dMiB", b/(1024*1024))
+	}
+	tview.Print(screen, s, 64, y, 12, tview.AlignLeft, color)
     }
 }
 
