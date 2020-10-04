@@ -89,17 +89,17 @@ type sshhost struct {
 }
 
 func (l *sshhost)Header(screen tcell.Screen) {
-    tview.Print(screen, "[yellow::b]Name", 1, 0, 16, tview.AlignLeft, tcell.ColorWhite)
-    tview.Print(screen, "[yellow::b]Hostname", 19, 0, 32, tview.AlignLeft, tcell.ColorWhite)
-    tview.Print(screen, "[yellow::b]Status", 53, 0, 16, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Name", 1, 0, 12, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Hostname", 15, 0, 32, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Status", 49, 0, 16, tview.AlignLeft, tcell.ColorWhite)
 }
 
 func (l *sshhost)Print(screen tcell.Screen, y int, selected bool) {
     color := tcell.ColorWhite
     if selected { color = tcell.ColorLime }
-    tview.Print(screen, l.Name, 1, y, 16, tview.AlignLeft, color)
-    tview.Print(screen, l.Hostname, 19, y, 32, tview.AlignLeft, color)
-    tview.Print(screen, l.status, 53, y, 16, tview.AlignLeft, color)
+    tview.Print(screen, l.Name, 1, y, 12, tview.AlignLeft, color)
+    tview.Print(screen, l.Hostname, 15, y, 32, tview.AlignLeft, color)
+    tview.Print(screen, l.status, 49, y, 16, tview.AlignLeft, color)
 }
 
 func (h *sshhost)Connect(done func()) {
@@ -238,11 +238,12 @@ type sshfwd struct {
     host *sshhost
     serv *session.Server
     fwdings []*fwding
+    cb int64
 }
 
 func (l *sshfwd)Header(screen tcell.Screen) {
-    tview.Print(screen, "[yellow::b]Proto", 2, 0, 16, tview.AlignLeft, tcell.ColorWhite)
-    tview.Print(screen, "[yellow::b]Forwarding", 18, 0, 32, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Proto", 2, 0, 12, tview.AlignLeft, tcell.ColorWhite)
+    tview.Print(screen, "[yellow::b]Forwarding", 14, 0, 32, tview.AlignLeft, tcell.ColorWhite)
 }
 
 func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
@@ -250,14 +251,22 @@ func (l *sshfwd)Print(screen tcell.Screen, y int, selected bool) {
     if selected { color = tcell.ColorGreen }
     // U+2192 = RIGHTWARDS ARROW
     hostports := fmt.Sprintf("%s \u2192 %s", l.Local, l.Remote)
-    tview.Print(screen, l.Name, 2, y, 16, tview.AlignLeft, color)
-    tview.Print(screen, hostports, 20, y, 32, tview.AlignLeft, color)
+    tview.Print(screen, l.Name, 2, y, 12, tview.AlignLeft, color)
+    tview.Print(screen, hostports, 16, y, 32, tview.AlignLeft, color)
     if l.serv != nil {
-	tview.Print(screen, "listening", 54, y, 12, tview.AlignLeft, color)
+	tview.Print(screen, "listening", 50, y, 12, tview.AlignLeft, color)
     }
     nr_fwding := len(l.fwdings)
     if nr_fwding > 0 {
-	tview.Print(screen, fmt.Sprintf("%d", nr_fwding), 68, y, 4, tview.AlignLeft, color)
+	tview.Print(screen, fmt.Sprintf("%d", nr_fwding), 64, y, 4, tview.AlignLeft, color)
+    }
+    b := l.cb
+    for _, fp := range l.fwdings {
+	b += fp.conn1.rb + fp.conn1.wb
+	b += fp.conn2.rb + fp.conn2.wb
+    }
+    if b > 0 {
+	tview.Print(screen, fmt.Sprintf("%dB", b), 70, y, 12, tview.AlignLeft, color)
     }
 }
 
@@ -329,6 +338,9 @@ func (f *sshfwd)RemoveFwding(fp *fwding) {
 	}
     }
     f.fwdings = newlist
+    // keep bytes
+    f.cb += fp.conn1.rb + fp.conn1.wb
+    f.cb += fp.conn2.rb + fp.conn2.wb
 }
 
 type ServiceList struct {
