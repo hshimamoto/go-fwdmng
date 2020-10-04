@@ -645,9 +645,11 @@ func (s *ServiceList)InputHandler() func(event *tcell.EventKey, setFocus func(p 
 	    }
 	    switch host.status {
 	    case "connected":
-		host.Disconnect(func() {
-		    // TODO
-		    s.app.Draw()
+		s.Confirm(fmt.Sprintf("Disconnect from %s", host.Name), func() {
+		    host.Disconnect(func() {
+			// TODO
+			s.app.Draw()
+		    })
 		})
 	    case "disconnected":
 		host.Connect(func() {
