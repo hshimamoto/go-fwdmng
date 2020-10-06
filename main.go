@@ -13,6 +13,7 @@ import (
     "fwdmng/config"
     "github.com/gdamore/tcell"
     "github.com/rivo/tview"
+    "github.com/mattn/go-runewidth"
 
     "golang.org/x/crypto/ssh"
     "github.com/hshimamoto/go-iorelay"
@@ -750,6 +751,8 @@ func (a *Application)Stop() {
 }
 
 func main() {
+    runewidth.DefaultCondition = &runewidth.Condition{ EastAsianWidth: false }
+
     fmt.Println("start")
 
     app := NewApplication("fwdconfig.toml")
